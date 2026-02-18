@@ -2,7 +2,7 @@
   "name": "jee-smart-bot",
   "version": "1.0.0",
   "description": "JEE Main AI Tutor with Researcher, Analyst, and Planner agents",
-"main": "bot-fixed-final.js"
+"main": "bot-fixed-final.js",
   "scripts": {
     "start": "node bot.js",
     "dev": "node --watch bot.js"
