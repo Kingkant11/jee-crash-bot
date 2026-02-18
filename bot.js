@@ -96,18 +96,35 @@ Do NOT include any explanation or text outside the JSON.
       "You are a JEE Main exam researcher. Generate high-quality diagnostic questions in JSON format only."
     );
 
-    // Clean and parse JSON
+    // Clean and parse JSON - Improved parser
     let jsonStr = response.trim();
+    
+    console.log('🔍 Raw LLM response (first 500 chars):', jsonStr.substring(0, 500));
+    
     // Remove markdown code blocks if present
-    jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '');
-    // Remove any extra text before/after JSON
+    jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '');
+    
+    // Find JSON array
     const jsonStart = jsonStr.indexOf('[');
-    const jsonEnd = jsonStr.lastIndexOf(']') + 1;
-    if (jsonStart !== -1 && jsonEnd > 0) {
-      jsonStr = jsonStr.substring(jsonStart, jsonEnd);
+    const jsonEnd = jsonStr.lastIndexOf(']');
+    
+    if (jsonStart === -1 || jsonEnd === -1) {
+      console.error('🔴 No JSON array found in response');
+      throw new Error('LLM did not return valid JSON array');
     }
+    
+    // Extract just the JSON part
+    jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+    
+    console.log('🔍 Extracted JSON (first 300 chars):', jsonStr.substring(0, 300));
 
     const questions = JSON.parse(jsonStr);
+
+    // Validate it's an array
+    if (!Array.isArray(questions)) {
+      console.error('🔴 Response is not an array:', typeof questions);
+      throw new Error('LLM returned invalid format');
+    }
 
     // Save to bank
     questionBank.push(...questions);
@@ -118,6 +135,7 @@ Do NOT include any explanation or text outside the JSON.
   } catch (e) {
     console.error('🔴 Researcher Agent Error:', e.message);
     console.error('Failed to parse questions');
+    console.error('Response that failed:', jsonStr);
     throw new Error('Failed to generate questions. Please try again.');
   }
 }
