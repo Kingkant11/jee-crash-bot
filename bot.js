@@ -30,7 +30,7 @@ let users = {};
 async function callGLM(prompt, systemPrompt = "You are JEE Main expert tutor for Session 2") {
   try {
     const response = await axios.post(
-      'https://api.z.ai/v1/chat/completions',
+      'https://api.z.ai/api/paas/v4/chat/completions',
       {
         model: 'glm-4.7',
         messages: [
