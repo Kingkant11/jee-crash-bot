@@ -32,16 +32,14 @@ async function callLLM(prompt, systemPrompt = "You are JEE Main expert tutor for
     // Determine API endpoint and key
     const apiKey = process.env.OPENROUTER_API_KEY || process.env.GLM_API_KEY;
     const apiEndpoint = process.env.OPENROUTER_API_KEY 
-      ? 'https://openrouter.ai/api/v1/chat/completions'
-      : 'https://api.z.ai/api/paas/v4/chat/completions';
+      ? 'https://api.z.ai/api/coding/paas/v4/chat/completions'
+      : 'https://api.z.ai/api/coding/paas/v4/chat/completions';
     
     // Determine model
-    const model = process.env.OPENROUTER_API_KEY 
-      ? 'zai/glm-4-flash'
-      : 'glm-4-flash';
+    const model = 'zai/glm-4-flash';
 
     console.log('🔍 LLM Config:', {
-      provider: process.env.OPENROUTER_API_KEY ? 'OpenRouter' : 'Z.ai',
+      provider: 'Z.ai Coding API',
       model: 'zai/glm-4-flash (GLM-4.5-Flash)',
       endpoint: apiEndpoint
     });
