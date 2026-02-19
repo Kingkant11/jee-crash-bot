@@ -34,15 +34,16 @@ app.get('/health', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(markdown.inlineCode("🚀 Web server listening on port ${PORT}"));
-  console.log(markdown.inlineCode("🤖 Telegram bot starting..."));
+  console.log("🚀 Web server listening on port ${PORT}");
+  console.log("🤖 Telegram bot starting...");
 });
 
+// ============================================
 // ============================================
 // TELEGRAM BOT
 // ============================================
 
-const bot = new TelegramBot(process.env.TELEGRAMmarkdown.italic("TOKEN, { polling: true });
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
 
 // In-memory user sessions (for active tests)
 const activeSessions = {};
@@ -55,48 +56,48 @@ const activeSessions = {};
 bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const telegramId = msg.from.id;
-  const referralCode = match[1] ? match[1].replace('ref")', '') : null;
+  const referralCode = match[1] ? match[1].replace('ref_', '') : null;
 
-  console.log(markdown.inlineCode("👤 /start from user ${telegramId}, referral: ${referralCode}"));
+  console.log(`👤 /start from user ${telegramId}, referral: ${referralCode}`);
 
   try {
     // Get or create user
     const user = await db.getOrCreateUser(telegramId, {
       username: msg.from.username,
-      firstmarkdown.italic("name: msg.from.first")name,
-      lastmarkdown.italic("name: msg.from.last")name
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
     });
 
-    console.log(markdown.inlineCode("✅ User ${user.id} ${user.ismarkdown.italic("paid ? '(paid)' : '(free)'}"));
+    console.log(`✅ User ${user.id} ${user.is_paid ? '(paid)' : '(free)'}`);
 
     // Check for referral
     if (referralCode) {
-      console.log(markdown.inlineCode("📌 Referral code: ${referralCode}"));
+      console.log(`📌 Referral code: ${referralCode}`);
       // TODO: Implement referral logic
     }
 
     // Send welcome message
-    const welcomeMessage = markdown.inlineCode("
-🎉 markdown.bold("Welcome to JEE Crash Bot!")
+    const welcomeMessage = `
+${markdown.bold('🎉 Welcome to JEE Crash Bot!')}
 
-${user.is")paid ? '✅ markdown.bold("Premium User") - Full access unlocked!' : '🆓 markdown.bold("Free Tier") - Upgrade for full features'}
+${user.is_paid ? '✅ ' + markdown.bold('Premium User') + ' - Full access unlocked!' : '🆓 ' + markdown.bold('Free Tier') + ' - Upgrade for full features'}
 
-markdown.bold("What I do:")
+${markdown.bold('📊 What I do:')}
 🔬 Generate diagnostic tests
 📊 Analyze your weaknesses
 📅 Create personalized study plans
 📈 Track your progress
 
-markdown.bold("Quick Start:")
+${markdown.bold('🚀 Quick Start:')}
 1. Send /test - Take FREE diagnostic test (10 questions, 10 mins)
 2. Get analysis - See exact weaknesses
 3. Upgrade (₹99) - Get 7-day personalized plan
 
-markdown.bold("Stats:")
-📊 Tests taken: ${user.totalmarkdown.italic("tests}
-🏆 Best score: ${user.highest")score}%
+${markdown.bold('📊 Stats:')}
+📊 Tests taken: ${user.total_tests}
+🏆 Best score: ${user.highest_score}%
 
-markdown.bold("Commands:")
+${markdown.bold('📱 Commands:')}
 /start - Start the bot
 /test - Take diagnostic test
 /history - See your test history
@@ -104,14 +105,14 @@ markdown.bold("Commands:")
 /myplan - View your study plan (if paid)
 /stats - Your statistics
 /help - Help message
-${user.ismarkdown.italic("paid ? '/myplan' : '/pay99 - Upgrade for ₹99'}
+${user.is_paid ? '/myplan' : '/pay99 - Upgrade for ₹99'}
 
-${user.is")paid ? '' : '💎 markdown.bold("Upgrade to Premium") for personalized 7-day crash plan!'}
+${!user.is_paid ? '💎 ' + markdown.bold('Upgrade to Premium') + ' for personalized 7-day crash plan!' : ''}
 
-markdown.bold("Powered by Groq AI (Llama 3.3 70B)")
-");
+${markdown.bold('🤖 Powered by Groq AI (Llama 3.3 70B)')}
+    `;
 
-    bot.sendMessage(chatId, welcomeMessage, { parsemarkdown.italic("mode: 'MarkdownV2' });
+    bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'MarkdownV2' });
   } catch (e) {
     console.error('❌ Error in /start:', e);
     bot.sendMessage(chatId, '❌ Error initializing. Please try again.');
@@ -123,7 +124,7 @@ bot.onText(/\/test/, async (msg) => {
   const chatId = msg.chat.id;
   const telegramId = msg.from.id;
 
-  console.log(markdown.inlineCode("📝 /test from user ${telegramId}"));
+  console.log("📝 /test from user ${telegramId}");
 
   try {
     // Get user
@@ -187,7 +188,7 @@ bot.on('callbackmarkdown.italic("query', async (query) => {
   const telegramId = query.from.id;
   const data = query.data;
 
-  console.log(markdown.inlineCode("🔘 Callback: ${data} from user ${telegramId}"));
+  console.log("🔘 Callback: ${data} from user ${telegramId}");
 
   try {
     if (data === 'start")test') {
