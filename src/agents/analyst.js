@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const markdown = require('../utils/markdown');
 
 /**
  * Analyze test results and generate detailed report
@@ -259,10 +260,10 @@ function generateRecommendations(subjectPercentages, weakestChapters) {
  * Generate formatted analysis message for Telegram
  */
 function formatAnalysisMessage(analysis) {
-  let message = `*📊 TEST ANALYSIS*\n\n`;
+  let message = markdown.bold('📊 TEST ANALYSIS') + '\n\n';
 
   // Subject scores
-  message += `*Subject-wise Performance:*\n`;
+  message += markdown.bold('Subject-wise Performance:') + '\n';
   Object.entries(analysis.subject_scores).forEach(([subject, data]) => {
     const emoji = data.percentage >= 70 ? '✅' : data.percentage >= 50 ? '📊' : '⚠️ ';
     message += `${emoji} ${subject}: ${data.score}/${data.total} (${data.percentage}%)\n`;
@@ -270,31 +271,31 @@ function formatAnalysisMessage(analysis) {
 
   // Weakest chapters
   if (analysis.weakest_chapters.length > 0) {
-    message += `\n*⚠️  Weakest Chapters:*\n`;
+    message += '\n' + markdown.bold('⚠️  Weakest Chapters:') + '\n';
     analysis.weakest_chapters.forEach((chapter, i) => {
       message += `${i + 1}. ${chapter.chapter} (${chapter.subject}) - ${chapter.accuracy}%\n`;
     });
   }
 
   // Error patterns
-  message += `\n*🔍 Error Patterns:*\n`;
+  message += '\n' + markdown.bold('🔍 Error Patterns:') + '\n';
   const errors = analysis.error_patterns;
   message += `• Conceptual: ${errors.conceptual}\n`;
   message += `• Calculation: ${errors.calculation}\n`;
   message += `• Silly Mistakes: ${errors.silly_mistake}\n`;
-  message += `→ *Dominant: ${errors.dominant}*\n`;
+  message += `→ Dominant: ${markdown.bold(errors.dominant)}\n`;
 
   // Session 2 impact
-  message += `\n*📈 Session 2 Impact:*\n`;
+  message += '\n' + markdown.bold('📈 Session 2 Impact:') + '\n';
   const impact = analysis.session2_impact;
   message += `• Estimated Score: ${impact.estimated_score}/300\n`;
   message += `• Potential Score: ${impact.potential_score}/300\n`;
-  message += `• *Marks at Risk: ${impact.loss}*\n`;
+  message += `• Marks at Risk: ${markdown.bold(impact.loss)}\n`;
   message += `💡 ${impact.recommendation}\n`;
 
   // Recommendations
   if (analysis.recommendations.length > 0) {
-    message += `\n*💡 Recommendations:*\n`;
+    message += '\n' + markdown.bold('💡 Recommendations:') + '\n';
     analysis.recommendations.slice(0, 5).forEach(rec => {
       message += `• ${rec}\n`;
     });

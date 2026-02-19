@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const markdown = require('../utils/markdown');
 
 /**
  * Generate 7-day personalized study plan
@@ -189,11 +190,6 @@ function fallbackPlan(analysis, userData) {
           pyq_year: [2024, 2023]
         }
       ],
-      diagram_1: {
-        type: 'mermaid',
-        title: `${chapter.chapter} Concept Flow`,
-        code: generateConceptDiagram(chapter)
-      },
       key_formulas: getFormulasForChapter(chapter),
       study_tips: `Focus on ${chapter.topic} fundamentals - build strong base`
     };
@@ -253,11 +249,6 @@ function fallbackPlan(analysis, userData) {
       { subject: 'Math', chapter: 'All', topic: 'Final mock', questions: 10, difficulty: 'medium', pyq_year: [] },
       { subject: 'Chemistry', chapter: 'All', topic: 'Final mock', questions: 10, difficulty: 'medium', pyq_year: [] }
     ],
-    diagram_1: {
-      type: 'mermaid',
-      title: 'Exam Day Strategy',
-      code: 'graph LR; A[Section 1] --> B[Section 2]; B --> C[Section 3]; C --> D[Review];'
-    },
     percentile_predictor: {
       estimated_score: analysis.session2_impact.estimated_score,
       predicted_percentile: estimatedPercentile,
@@ -320,53 +311,59 @@ function calculatePercentile(score) {
 }
 
 /**
- * Format plan as Telegram message
+ * Format plan as Telegram message (MarkdownV2 safe)
  */
 function formatPlanMessage(plan) {
-  let message = `*📅 Your 7-Day JEE Session 2 Crash Plan*\n\n`;
+  let message = markdown.bold('📅 Your 7-Day JEE Session 2 Crash Plan') + '\n\n';
 
   Object.entries(plan).forEach(([dayKey, day], index) => {
     const dayNum = index + 1;
-    message += `*━━━ DAY ${dayNum} ━━━*\n`;
-    message += `📌 ${day.focus}\n`;
-    message += `📊 ${day.total_questions} questions: `;
 
+    // Day header
+    message += markdown.bold(`━━━ DAY ${dayNum} ━━━`) + '\n';
+    message += `📌 ${day.focus}\n`;
+    message += `📊 ${day.total_questions} questions:\n`;
+
+    // Subject breakdown
     Object.entries(day.subjects).forEach(([subject, count]) => {
       const emoji = subject === 'Physics' ? '📘' : subject === 'Math' ? '📐' : '🧪';
       message += `${emoji}${subject}: ${count} `;
     });
 
-    message += `\n`;
+    message += '\n';
 
-    // Show key topics
+    // Key topics
     if (day.topics && day.topics.length > 0) {
-      message += `📚 Key Topics: `;
+      message += '📚 ' + markdown.bold('Key Topics:') + ' ';
       day.topics.slice(0, 3).forEach((topic, i) => {
-        message += `${topic.chapter} `;
+        message += markdown.bold(topic.chapter) + ' ';
       });
-      message += `\n`;
+      message += '\n';
     }
 
-    // Formulas
+    // Formulas (use inline code to prevent parsing issues)
     if (day.key_formulas && day.key_formulas.length > 0) {
-      message += `📐 Formulas: ${day.key_formulas.join(', ')}\n`;
+      message += '📐 ' + markdown.bold('Formulas:') + ' ';
+      day.key_formulas.forEach((formula, i) => {
+        message += markdown.formatFormula(formula) + (i < day.key_formulas.length - 1 ? ', ' : '\n');
+      });
     }
 
     // Tips
     if (day.study_tips) {
-      message += `💡 ${day.study_tips}\n`;
+      message += '💡 ' + markdown.bold(day.study_tips) + '\n';
     }
 
     // Percentile predictor on Day 7
     if (dayKey === 'day_7' && day.percentile_predictor) {
       const pp = day.percentile_predictor;
-      message += `\n*📈 Session 2 Prediction:*\n`;
+      message += '\n' + markdown.bold('📈 Session 2 Prediction:') + '\n';
       message += `• Estimated Score: ${pp.estimated_score}/300\n`;
       message += `• Predicted Percentile: ~${pp.predicted_percentile}%\n`;
       message += `• Expected Rank: ${pp.rank_range}\n`;
     }
 
-    message += `\n`;
+    message += '\n';
   });
 
   return message;
