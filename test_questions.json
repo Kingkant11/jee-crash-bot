@@ -1,0 +1,142 @@
+[
+  {
+    "q": "A particle is moving in a straight line with initial velocity 5 m/s. It accelerates at 2 m/s^2 for 3 seconds. What is its final velocity?",
+    "options": [
+      "11 m/s",
+      "13 m/s",
+      "15 m/s",
+      "17 m/s"
+    ],
+    "ans": 1,
+    "subject": "Physics",
+    "chapter": "Mechanics",
+    "topic": "Kinematics",
+    "difficulty": "easy"
+  },
+  {
+    "q": "The equation of the curve passing through (1, 2) and having gradient function 2x + 3 is?",
+    "options": [
+      "y = x^2 + 3x + c",
+      "y = x^2 + 3x - 1",
+      "y = 2x^2 + 3x + 1",
+      "y = x^2 + 3x - 3"
+    ],
+    "ans": 1,
+    "subject": "Math",
+    "chapter": "Calculus",
+    "topic": "Differential Equations",
+    "difficulty": "medium"
+  },
+  {
+    "q": "What is the major product of the reaction of propene with HBr in the presence of peroxide?",
+    "options": [
+      "1-bromopropane",
+      "2-bromopropane",
+      "1,2-dibromopropane",
+      "2,2-dibromopropane"
+    ],
+    "ans": 0,
+    "subject": "Chemistry",
+    "chapter": "Organic Chemistry",
+    "topic": "Addition Reactions",
+    "difficulty": "easy"
+  },
+  {
+    "q": "A block of mass 2 kg is moving on a frictionless surface with velocity 4 m/s. It collides with another block of mass 4 kg moving with velocity 2 m/s in the same direction. What is the velocity of the system after collision?",
+    "options": [
+      "2 m/s",
+      "3 m/s",
+      "4 m/s",
+      "6 m/s"
+    ],
+    "ans": 0,
+    "subject": "Physics",
+    "chapter": "Mechanics",
+    "topic": "Collisions",
+    "difficulty": "medium"
+  },
+  {
+    "q": "If f(x) = x^3 - 6x^2 + 11x - 6, then what is f'(x) at x = 2?",
+    "options": [
+      "4",
+      "6",
+      "8",
+      "10"
+    ],
+    "ans": 2,
+    "subject": "Math",
+    "chapter": "Calculus",
+    "topic": "Differentiation",
+    "difficulty": "medium"
+  },
+  {
+    "q": "The major product of the reaction of benzaldehyde with Tollens' reagent is?",
+    "options": [
+      "Benzyl alcohol",
+      "Benzaldehyde",
+      "Benzene",
+      "Benzoic acid"
+    ],
+    "ans": 3,
+    "subject": "Chemistry",
+    "chapter": "Organic Chemistry",
+    "topic": "Aromatic Aldehydes",
+    "difficulty": "hard"
+  },
+  {
+    "q": "A particle is projected from the ground with initial velocity 20 m/s at an angle of 60° to the horizontal. What is its maximum height?",
+    "options": [
+      "10 m",
+      "20 m",
+      "30 m",
+      "40 m"
+    ],
+    "ans": 2,
+    "subject": "Physics",
+    "chapter": "Mechanics",
+    "topic": "Projectile Motion",
+    "difficulty": "hard"
+  },
+  {
+    "q": "The value of the integral ∫(2x + 1) / (x^2 + x) dx is?",
+    "options": [
+      "log|x^2 + x| + c",
+      "log|x + 1| + c",
+      "2log|x| + c",
+      "2log|x + 1| + c"
+    ],
+    "ans": 1,
+    "subject": "Math",
+    "chapter": "Calculus",
+    "topic": "Integration",
+    "difficulty": "hard"
+  },
+  {
+    "q": "What is the hybridization of the central atom in the molecule CH4?",
+    "options": [
+      "sp",
+      "sp^2",
+      "sp^3",
+      "sp^3d"
+    ],
+    "ans": 2,
+    "subject": "Chemistry",
+    "chapter": "Organic Chemistry",
+    "topic": "Hybridization",
+    "difficulty": "easy"
+  },
+  {
+    "q": "A force of 10 N acts on a body of mass 5 kg. What is the acceleration of the body?",
+    "options": [
+      "1 m/s^2",
+      "2 m/s^2",
+      "3 m/s^2",
+      "4 m/s^2"
+    ],
+    "ans": 1,
+    "subject": "Physics",
+    "chapter": "Mechanics",
+    "topic": "Newton's Laws",
+    "difficulty": "easy"
+  }
+]

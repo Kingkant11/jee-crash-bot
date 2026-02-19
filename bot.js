@@ -2,6 +2,25 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const fs = require('fs');
+const express = require('express');
+
+// Initialize Express server for Render health checks
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('🤖 JEE Bot is running!');
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Start Express server
+app.listen(PORT, () => {
+  console.log(`🚀 Web server listening on port ${PORT}`);
+  console.log(`🤖 Telegram bot starting...`);
+});
 
 // Initialize bot
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
@@ -24,39 +43,96 @@ if (fs.existsSync(questionBankFile)) {
 let users = {};
 
 // ============================================
-// GLM-4.7 LLM API Wrapper
+// Multi-Provider LLM API Wrapper (GLM / Groq / HuggingFace)
 // ============================================
 
-async function callGLM(prompt, systemPrompt = "You are JEE Main expert tutor for Session 2") {
-  try {
-    const response = await axios.post(
-      'https://api.z.ai/api/paas/v4/chat/completions',
-      {
-        model: 'glm-4.7',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 2000
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.GLM_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+async function callLLM(prompt, systemPrompt = "You are JEE Main expert tutor for Session 2") {
+  const provider = process.env.LLM_PROVIDER || 'groq'; // Options: 'glm', 'groq', 'huggingface'
 
-    return response.data.choices[0].message.content;
+  try {
+    if (provider === 'groq') {
+      // Groq - FREE fast Llama/Mistral models
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile', // Free models: llama-3.3-70b-versatile, mixtral-8x7b-32768, mistral-7b-instruct-v0.3
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2000
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return response.data.choices[0].message.content;
+    }
+
+    if (provider === 'glm') {
+      // Original GLM-4.7 implementation
+      const response = await axios.post(
+        'https://api.z.ai/api/paas/v4/chat/completions',
+        {
+          model: 'glm-4.7',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2000
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.GLM_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return response.data.choices[0].message.content;
+    }
+
+    if (provider === 'huggingface') {
+      // HuggingFace Inference API (Free tier available)
+      const response = await axios.post(
+        `https://api-inference.huggingface.co/models/${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`,
+        {
+          inputs: `<s>[INST] ${systemPrompt}\n\n${prompt} [/INST]`,
+          parameters: {
+            max_new_tokens: 2000,
+            temperature: 0.3,
+            return_full_text: false
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.HF_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return response.data[0]?.generated_text || 'No response';
+    }
+
+    throw new Error(`Unknown provider: ${provider}`);
+
   } catch (error) {
-    console.error('🔴 GLM API Error:', error.message);
+    console.error(`🔴 ${provider.toUpperCase()} API Error:`, error.message);
     if (error.response) {
       console.error('Response status:', error.response.status);
       console.error('Response data:', error.response.data);
     }
     return 'AI temporarily unavailable. Score logged.';
   }
+}
+
+// Backward compatibility
+async function callGLM(prompt, systemPrompt) {
+  return callLLM(prompt, systemPrompt);
 }
 
 // ============================================
@@ -90,6 +166,7 @@ RETURN ONLY valid JSON in this exact format:
 Do NOT include any explanation or text outside the JSON.
 `;
 
+  let jsonStr;
   try {
     const response = await callGLM(
       researcherPrompt,
@@ -97,7 +174,7 @@ Do NOT include any explanation or text outside the JSON.
     );
 
     // Clean and parse JSON - Improved parser
-    let jsonStr = response.trim();
+    jsonStr = response.trim();
     
     console.log('🔍 Raw LLM response (first 500 chars):', jsonStr.substring(0, 500));
     
