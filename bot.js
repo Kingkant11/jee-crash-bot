@@ -362,14 +362,14 @@ Send /test for a FREE diagnostic test (10 questions, 10 mins)
 *Powered by GLM-4.7 AI*
   `;
 
-  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'MarkdownV2' });
 });
 
 // /test command - Researcher Agent generates questions
 bot.onText(/\/test/, async (msg) => {
   const chatId = msg.chat.id;
 
-  bot.sendMessage(chatId, '🧠 *Researcher AI* is scanning Session 1 syllabus + PYQs...\nGenerating your diagnostic test...', { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, '🧠 *Researcher AI* is scanning Session 1 syllabus + PYQs...\nGenerating your diagnostic test...', { parse_mode: 'MarkdownV2' });
 
   try {
     const questions = await researcherAgentGenerateQuestions();
@@ -407,7 +407,7 @@ function sendQuestion(chatId, qIndex) {
   bot.sendMessage(
     chatId,
     `*Q${qIndex + 1}/${user.questions.length}* (${q.subject} - ${q.chapter})\n\n${q.q}`,
-    { reply_markup: keyboard, parse_mode: 'Markdown' }
+    { reply_markup: keyboard, parse_mode: 'MarkdownV2' }
   );
 }
 
@@ -434,7 +434,7 @@ bot.on('callback_query', async (query) => {
       sendQuestion(chatId, qIndex + 1);
     } else {
       // All questions answered - analyze
-      bot.sendMessage(chatId, '🤖 *AI Analyst* is processing your mistakes...\n\nThis may take 10-15 seconds...', { parse_mode: 'Markdown' });
+      bot.sendMessage(chatId, '🤖 *AI Analyst* is processing your mistakes...\n\nThis may take 10-15 seconds...', { parse_mode: 'MarkdownV2' });
 
       // Run Analyst Agent
       setTimeout(async () => {
@@ -497,7 +497,7 @@ Send /pay99 to get:
 *Don't guess. Target exactly what you need.*
     `;
 
-    bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, resultMessage, { parse_mode: 'MarkdownV2' });
   } catch (e) {
     console.error('Error analyzing test:', e);
     bot.sendMessage(chatId, '❌ Error analyzing your test. Please try again.');
@@ -526,7 +526,7 @@ Amount: ₹99
 Reply /paid to simulate successful payment
   `;
 
-  bot.sendMessage(chatId, paymentMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, paymentMessage, { parse_mode: 'MarkdownV2' });
 });
 
 // /paid command - Simulated payment for testing
@@ -538,7 +538,7 @@ bot.onText(/\/paid/, async (msg) => {
     return;
   }
 
-  bot.sendMessage(chatId, '📅 *Planner Agent* is creating your personalized 7-day crash plan...\n\nThis may take 15-20 seconds...', { parse_mode: 'Markdown' });
+  bot.sendMessage(chatId, '📅 *Planner Agent* is creating your personalized 7-day crash plan...\n\nThis may take 15-20 seconds...', { parse_mode: 'MarkdownV2' });
 
   // Generate plan with Planner Agent
   setTimeout(async () => {
@@ -562,7 +562,7 @@ Share this bot: https://t.me/${process.env.BOT_USERNAME || 'your_bot'}?start=ref
 Good luck for JEE Session 2! 🚀
       `;
 
-      bot.sendMessage(chatId, finalMessage, { parse_mode: 'Markdown' });
+      bot.sendMessage(chatId, finalMessage, { parse_mode: 'MarkdownV2' });
     } catch (e) {
       console.error('Error generating plan:', e);
       bot.sendMessage(chatId, '❌ Error generating your plan. Please try again.');
@@ -590,7 +590,7 @@ bot.onText(/\/help/, async (msg) => {
 *Questions?* Contact: @${process.env.SUPPORT_USERNAME}
   `;
 
-  bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: 'Markdown' });
+  bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: 'MarkdownV2' });
 });
 
 // Error handling
