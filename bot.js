@@ -1,10 +1,22 @@
+/**
+ * JEE Crash Bot - Main Bot File
+ * Integrates database, agents, and Telegram bot
+ */
+
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
-const fs = require('fs');
 const express = require('express');
 
-// Initialize Express server for Render health checks
+// Import modules
+const db = require('./src/database/db');
+const researcherAgent = require('./src/agents/researcher');
+const analystAgent = require('./src/agents/analyst');
+const plannerAgent = require('./src/agents/planner');
+
+// ============================================
+// EXPRESS SERVER (Health Checks)
+// ============================================
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -13,592 +25,672 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
 });
 
-// Start Express server
 app.listen(PORT, () => {
   console.log(`🚀 Web server listening on port ${PORT}`);
   console.log(`🤖 Telegram bot starting...`);
 });
 
-// Initialize bot
+// ============================================
+// TELEGRAM BOT
+// ============================================
+
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
 
-// Storage files
-const questionBankFile = 'question_bank.json';
-let questionBank = [];
-
-// Load existing question bank
-if (fs.existsSync(questionBankFile)) {
-  try {
-    questionBank = JSON.parse(fs.readFileSync(questionBankFile, 'utf8'));
-  } catch (e) {
-    console.log('⚠️  Warning: question_bank.json corrupted, starting fresh');
-    questionBank = [];
-  }
-}
-
-// User sessions
-let users = {};
+// In-memory user sessions (for active tests)
+const activeSessions = {};
 
 // ============================================
-// Multi-Provider LLM API Wrapper (GLM / Groq / HuggingFace)
-// ============================================
-
-async function callLLM(prompt, systemPrompt = "You are JEE Main expert tutor for Session 2") {
-  const provider = process.env.LLM_PROVIDER || 'groq'; // Options: 'glm', 'groq', 'huggingface'
-
-  try {
-    if (provider === 'groq') {
-      // Groq - FREE fast Llama/Mistral models
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile', // Free models: llama-3.3-70b-versatile, mixtral-8x7b-32768, mistral-7b-instruct-v0.3
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 2000
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      return response.data.choices[0].message.content;
-    }
-
-    if (provider === 'glm') {
-      // Original GLM-4.7 implementation
-      const response = await axios.post(
-        'https://api.z.ai/api/paas/v4/chat/completions',
-        {
-          model: 'glm-4.7',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 2000
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.GLM_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      return response.data.choices[0].message.content;
-    }
-
-    if (provider === 'huggingface') {
-      // HuggingFace Inference API (Free tier available)
-      const response = await axios.post(
-        `https://api-inference.huggingface.co/models/${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`,
-        {
-          inputs: `<s>[INST] ${systemPrompt}\n\n${prompt} [/INST]`,
-          parameters: {
-            max_new_tokens: 2000,
-            temperature: 0.3,
-            return_full_text: false
-          }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.HF_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      return response.data[0]?.generated_text || 'No response';
-    }
-
-    throw new Error(`Unknown provider: ${provider}`);
-
-  } catch (error) {
-    console.error(`🔴 ${provider.toUpperCase()} API Error:`, error.message);
-    if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
-    }
-    return 'AI temporarily unavailable. Score logged.';
-  }
-}
-
-// Backward compatibility
-async function callGLM(prompt, systemPrompt) {
-  return callLLM(prompt, systemPrompt);
-}
-
-// ============================================
-// AGENT 1: RESEARCHER - Generates Diagnostic Questions
-// ============================================
-
-async function researcherAgentGenerateQuestions() {
-  console.log('🔬 Researcher Agent: Generating diagnostic questions...');
-
-  const researcherPrompt = `
-Generate 10 JEE Main diagnostic questions for Session 2 preparation:
-- 4 Physics, 3 Math, 3 Chemistry
-- Focus on high-weightage topics: Mechanics, Calculus, Organic Chemistry
-- Mix difficulty: 3 easy, 4 medium, 3 hard
-- Include topics likely repeated from Session 1
-- Make questions JEE-style (conceptual, not just formula application)
-
-RETURN ONLY valid JSON in this exact format:
-[
-  {
-    "q": "Question text here?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "ans": 0,
-    "subject": "Physics",
-    "chapter": "Mechanics",
-    "topic": "Kinematics",
-    "difficulty": "medium"
-  }
-]
-
-Do NOT include any explanation or text outside the JSON.
-`;
-
-  let jsonStr;
-  try {
-    const response = await callGLM(
-      researcherPrompt,
-      "You are a JEE Main exam researcher. Generate high-quality diagnostic questions in JSON format only."
-    );
-
-    // Clean and parse JSON - Improved parser
-    jsonStr = response.trim();
-    
-    console.log('🔍 Raw LLM response (first 500 chars):', jsonStr.substring(0, 500));
-    
-    // Remove markdown code blocks if present
-    jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '');
-    
-    // Find JSON array
-    const jsonStart = jsonStr.indexOf('[');
-    const jsonEnd = jsonStr.lastIndexOf(']');
-    
-    if (jsonStart === -1 || jsonEnd === -1) {
-      console.error('🔴 No JSON array found in response');
-      throw new Error('LLM did not return valid JSON array');
-    }
-    
-    // Extract just the JSON part
-    jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-    
-    console.log('🔍 Extracted JSON (first 300 chars):', jsonStr.substring(0, 300));
-
-    const questions = JSON.parse(jsonStr);
-
-    // Validate it's an array
-    if (!Array.isArray(questions)) {
-      console.error('🔴 Response is not an array:', typeof questions);
-      throw new Error('LLM returned invalid format');
-    }
-
-    // Save to bank
-    questionBank.push(...questions);
-    fs.writeFileSync(questionBankFile, JSON.stringify(questionBank, null, 2));
-
-    console.log(`✅ Researcher Agent: Generated ${questions.length} questions`);
-    return questions;
-  } catch (e) {
-    console.error('🔴 Researcher Agent Error:', e.message);
-    console.error('Failed to parse questions');
-    console.error('Response that failed:', jsonStr);
-    throw new Error('Failed to generate questions. Please try again.');
-  }
-}
-
-// ============================================
-// AGENT 2: ANALYST - Processes Test Results
-// ============================================
-
-async function analystAgentAnalyze(testData) {
-  console.log('📊 Analyst Agent: Analyzing test results...');
-
-  const analystPrompt = `
-You are a JEE Main expert analyst. Analyze this student's test data:
-
-STUDENT TEST DATA:
-${JSON.stringify(testData, null, 2)}
-
-JEE ANALYST TASK:
-1. Calculate subject-wise scores (Physics/Math/Chemistry) out of 10
-2. Identify the 3 WEAKEST chapters (score < 60%)
-3. Detect error patterns (conceptual / calculation / silly mistake)
-4. Estimate Session 2 marks impact if these weaknesses are fixed
-
-OUTPUT FORMAT:
-*📊 SCORE BREAKDOWN*
-• Physics: X/10 (XX%)
-• Mathematics: X/10 (XX%)
-• Chemistry: X/10 (XX%)
-
-*📉 WEAK CHAPTERS*
-• Physics: [Chapter Name] - XX% (Error Pattern: concept/calc/silly)
-• Mathematics: [Chapter Name] - XX% (Error Pattern: ...)
-• Chemistry: [Chapter Name] - XX% (Error Pattern: ...)
-
-*🎯 SESSION 2 IMPACT*
-Fixing these weaknesses could add +18-25 marks to your JEE Main score.
-
-Make the tone URGENT and CONVINCING. Use emojis. Make them want to upgrade for ₹99.
-
-Return in Markdown format.
-`;
-
-  try {
-    const analysis = await callGLM(
-      analystPrompt,
-      "You are a JEE Main performance analyst. Provide urgent, convincing analysis with clear recommendations."
-    );
-
-    console.log('✅ Analyst Agent: Analysis complete');
-    return analysis;
-  } catch (e) {
-    console.error('🔴 Analyst Agent Error:', e.message);
-    return 'Analysis temporarily unavailable. Please try again.';
-  }
-}
-
-// ============================================
-// AGENT 3: PLANNER - Creates Custom Study Plan
-// ============================================
-
-async function plannerAgentCreatePlan(analysis) {
-  console.log('📅 Planner Agent: Creating 7-day crash plan...');
-
-  const plannerPrompt = `
-Based on this JEE student's analysis, create a PERSONALIZED 7-DAY JEE SESSION 2 CRASH PLAN:
-
-STUDENT ANALYSIS:
-${analysis}
-
-CRASH PLAN REQUIREMENTS:
-• Daily schedule: 30 targeted questions (not random)
-• Include Mermaid diagrams for difficult concepts
-• Use LaTeX for all equations
-• Day 1-3: Focus on weakest chapters
-• Day 4-5: Practice + mock tests
-• Day 6: Revision + formula sheets
-• Day 7: Full mock test
-• Include estimated Session 2 percentile after completion
-• Add motivational quotes
-
-OUTPUT FORMAT:
-*📅 DAY 1 - [Focus Chapter]*
-
-🎯 Targets:
-• 30 questions on [Topic]
-• 2 Mermaid diagrams for [Concept]
-• Formula sheet
-
-📖 Resources:
-• NCERT Exercise X.Y
-• Previous Year Questions: 20XX Q12, Q25
-
-*💡 Motivation*
-"Quote"
-
-[Repeat for all 7 days]
-
-*📈 Expected Session 2 Percentile*
-XX.XX percentile if plan followed
-
-Return in Markdown format with emojis.
-`;
-
-  try {
-    const plan = await callGLM(
-      plannerPrompt,
-      "You are a JEE Main study planner. Create actionable, day-by-day study plans with clear targets and resources."
-    );
-
-    console.log('✅ Planner Agent: 7-day plan created');
-    return plan;
-  } catch (e) {
-    console.error('🔴 Planner Agent Error:', e.message);
-    return 'Plan generation temporarily unavailable. Please try again.';
-  }
-}
-
-// ============================================
-// TELEGRAM BOT COMMANDS
+// COMMANDS
 // ============================================
 
 // /start command
-bot.onText(/\/start/, async (msg) => {
+bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
-  users[chatId] = { step: 'welcome' };
+  const telegramId = msg.from.id;
+  const referralCode = match[1] ? match[1].replace('ref_', '') : null;
 
-  const welcomeMessage = `
-🔥 *JEE Session 2 AI Tutor* 🔥
-
-*AI-Powered JEE Main Preparation*
-
-🎯 *What I do:*
-• AI analyzes your exact mistakes from Session 1
-• Creates personalized 7-day crash plan
-• Predicts your Session 2 percentile
-• Focuses on high-weightage topics
-
-🚀 *Get Started:*
-Send /test for a FREE diagnostic test (10 questions, 10 mins)
-
-📊 *After the test:*
-• Get detailed analysis of weak chapters
-• See your error patterns
-• Understand Session 2 marks impact
-• Unlock full 7-day crash plan for ₹99
-
-*Powered by GLM-4.7 AI*
-  `;
-
-  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'MarkdownV2' });
-});
-
-// /test command - Researcher Agent generates questions
-bot.onText(/\/test/, async (msg) => {
-  const chatId = msg.chat.id;
-
-  bot.sendMessage(chatId, '🧠 *Researcher AI* is scanning Session 1 syllabus + PYQs...\nGenerating your diagnostic test...', { parse_mode: 'MarkdownV2' });
+  console.log(`👤 /start from user ${telegramId}, referral: ${referralCode}`);
 
   try {
-    const questions = await researcherAgentGenerateQuestions();
+    // Get or create user
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
 
-    users[chatId] = {
-      step: 'test',
-      questions: questions,
-      qIndex: 0,
-      answers: {},
-      startTime: Date.now()
-    };
+    console.log(`✅ User ${user.id} ${user.is_paid ? '(paid)' : '(free)'}`);
 
-    // Send first question
-    sendQuestion(chatId, 0);
+    // Check for referral
+    if (referralCode) {
+      console.log(`📌 Referral code: ${referralCode}`);
+      // TODO: Implement referral logic
+    }
+
+    // Send welcome message
+    const welcomeMessage = `
+🎉 *Welcome to JEE Crash Bot!*
+
+${user.is_paid ? '✅ *Premium User* - Full access unlocked!' : '🆓 *Free Tier* - Upgrade for full features'}
+
+*What I do:*
+🔬 Generate diagnostic tests
+📊 Analyze your weaknesses
+📅 Create personalized study plans
+📈 Track your progress
+
+*Quick Start:*
+1. Send /test - Take FREE diagnostic test (10 questions, 10 mins)
+2. Get analysis - See exact weaknesses
+3. Upgrade (₹99) - Get 7-day personalized plan
+
+*Stats:*
+📊 Tests taken: ${user.total_tests}
+🏆 Best score: ${user.highest_score}%
+
+*Commands:*
+/start - Start the bot
+/test - Take diagnostic test
+/history - See your test history
+/progress - Check subject-wise progress
+/myplan - View your study plan (if paid)
+/stats - Your statistics
+/help - Help message
+${user.is_paid ? '/myplan' : '/pay99 - Upgrade for ₹99'}
+
+${user.is_paid ? '' : '💎 *Upgrade to Premium* for personalized 7-day crash plan!'}
+
+*Powered by Groq AI (Llama 3.3 70B)*
+`;
+
+    bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'MarkdownV2' });
   } catch (e) {
-    console.error('Error generating test:', e);
-    bot.sendMessage(chatId, '❌ Error generating test. Please try again with /test');
+    console.error('❌ Error in /start:', e);
+    bot.sendMessage(chatId, '❌ Error initializing. Please try again.');
   }
 });
 
-// Send question with inline keyboard
-function sendQuestion(chatId, qIndex) {
-  const user = users[chatId];
-  if (!user || !user.questions || qIndex >= user.questions.length) {
+// /test command - Start diagnostic test
+bot.onText(/\/test/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
+
+  console.log(`📝 /test from user ${telegramId}`);
+
+  try {
+    // Get user
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
+
+    // Check if there's an active test
+    if (activeSessions[telegramId]) {
+      bot.sendMessage(chatId, '⚠️  You already have an active test. Complete it first with /cancel', { parse_mode: 'MarkdownV2' });
+      return;
+    }
+
+    // Show loading message
+    const loadingMsg = await bot.sendMessage(
+      chatId,
+      '🧠 *Researcher AI* is generating your diagnostic test...\n\nPlease wait 15-20 seconds...',
+      { parse_mode: 'MarkdownV2' }
+    );
+
+    // Generate questions
+    const questions = await researcherAgent.researcherAgentGenerateQuestions();
+
+    // Save to database
+    await db.saveQuestionsToBank(questions);
+
+    // Create active session
+    activeSessions[telegramId] = {
+      userId: user.id,
+      questions: questions,
+      answers: {},
+      qIndex: 0,
+      startTime: Date.now(),
+      testType: 'diagnostic'
+    };
+
+    // Update loading message
+    bot.editMessageText(loadingMsg.message_id, `✅ Test ready!\n\n*10 questions* - 10 minutes\n\nPress the button below to start ⬇️`, { parse_mode: 'MarkdownV2' });
+
+    // Send start button
+    const keyboard = {
+      inline_keyboard: [[{ text: '🚀 Start Test', callback_data: 'start_test' }]]
+    };
+
+    bot.sendMessage(chatId, 'Ready?', {
+      reply_markup: { inline_keyboard: keyboard.inline_keyboard },
+      parse_mode: 'MarkdownV2'
+    });
+
+  } catch (e) {
+    console.error('❌ Error generating test:', e);
+    bot.sendMessage(chatId, '❌ Error generating test. Please try again.');
+  }
+});
+
+// Handle test start button
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const telegramId = query.from.id;
+  const data = query.data;
+
+  console.log(`🔘 Callback: ${data} from user ${telegramId}`);
+
+  try {
+    if (data === 'start_test') {
+      bot.answerCallbackQuery(query.id);
+      sendQuestion(chatId, telegramId, 0);
+    } else if (data.startsWith('ans_')) {
+      bot.answerCallbackQuery(query.id);
+      handleAnswer(chatId, telegramId, data);
+    }
+  } catch (e) {
+    console.error('❌ Error handling callback:', e);
+  }
+});
+
+// Send a question
+async function sendQuestion(chatId, telegramId, qIndex) {
+  const session = activeSessions[telegramId];
+
+  if (!session || !session.questions || qIndex >= session.questions.length) {
+    // Test complete
+    await completeTest(chatId, telegramId);
     return;
   }
 
-  const q = user.questions[qIndex];
+  const q = session.questions[qIndex];
   const keyboard = {
     inline_keyboard: q.options.map((opt, i) => [
       { text: opt, callback_data: `ans_${qIndex}_${i}` }
     ])
   };
 
-  bot.sendMessage(
-    chatId,
-    `*Q${qIndex + 1}/${user.questions.length}* (${q.subject} - ${q.chapter})\n\n${q.q}`,
-    { reply_markup: keyboard, parse_mode: 'MarkdownV2' }
-  );
+  const questionText = `*Question ${qIndex + 1}/10*\n\n${q.q}\n\n\`${q.subject} | ${q.chapter} | ${q.difficulty}\``;
+
+  bot.sendMessage(chatId, questionText, {
+    reply_markup: { inline_keyboard: keyboard.inline_keyboard },
+    parse_mode: 'MarkdownV2'
+  });
+
+  session.qIndex = qIndex;
 }
 
-// Handle answer selection
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data.split('_');
+// Handle answer
+async function handleAnswer(chatId, telegramId, data) {
+  const session = activeSessions[telegramId];
 
-  if (data[0] === 'ans') {
-    const qIndex = parseInt(data[1]);
-    const ansIndex = parseInt(data[2]);
-
-    // Save answer
-    if (users[chatId]) {
-      users[chatId].answers[qIndex] = ansIndex;
-    }
-
-    // Answer callback
-    await bot.answerCallbackQuery(query.id);
-
-    // Check if more questions or show analysis
-    if (qIndex < users[chatId].questions.length - 1) {
-      // Send next question
-      sendQuestion(chatId, qIndex + 1);
-    } else {
-      // All questions answered - analyze
-      bot.sendMessage(chatId, '🤖 *AI Analyst* is processing your mistakes...\n\nThis may take 10-15 seconds...', { parse_mode: 'MarkdownV2' });
-
-      // Run Analyst Agent
-      setTimeout(async () => {
-        await analyzeTestAndShowResults(chatId);
-      }, 1000);
-    }
+  if (!session) {
+    bot.sendMessage(chatId, '❌ No active test. Send /test to start.', { parse_mode: 'MarkdownV2' });
+    return;
   }
-});
 
-// Analyze test and show results
-async function analyzeTestAndShowResults(chatId) {
+  const [_, qIndexStr, answerIndex] = data.split('_');
+  const qIndex = parseInt(qIndexStr);
+  const answer = parseInt(answerIndex);
+
+  // Save answer
+  session.answers[qIndex] = answer;
+  session.qIndex++;
+
+  // Send next question or complete
+  if (session.qIndex < session.questions.length) {
+    sendQuestion(chatId, telegramId, session.qIndex);
+  } else {
+    await completeTest(chatId, telegramId);
+  }
+}
+
+// Complete test and analyze
+async function completeTest(chatId, telegramId) {
+  const session = activeSessions[telegramId];
+
+  if (!session) return;
+
+  console.log(`✅ Test completed for user ${session.userId}`);
+
   try {
-    const user = users[chatId];
-    if (!user || !user.questions) {
-      return;
-    }
+    // Calculate results
+    const endTime = Date.now();
+    const timeTaken = Math.round((endTime - session.startTime) / 1000); // seconds
 
-    // Prepare test data for analyst
-    const testData = user.questions.map((q, i) => ({
-      question: q.q,
-      given_ans: q.options[user.answers[i]],
-      correct_ans: q.options[q.ans],
-      is_correct: user.answers[i] === q.ans,
+    const testData = session.questions.map((q, i) => ({
+      question_id: q.id,
       subject: q.subject,
       chapter: q.chapter,
       topic: q.topic,
-      difficulty: q.difficulty
+      difficulty: q.difficulty,
+      is_correct: session.answers[i] === q.ans
     }));
 
-    // Calculate score
-    const correctAnswers = testData.filter(t => t.is_correct).length;
-    const score = correctAnswers;
-    const percentage = Math.round((score / testData.length) * 100);
+    const correctCount = testData.filter(t => t.is_correct).length;
+    const score = correctCount;
+    const total = testData.length;
+    const percentage = Math.round((score / total) * 100);
 
-    user.testData = testData;
-    user.score = score;
-    user.percentage = percentage;
+    // Get user's progress history for better analysis
+    const userTests = await db.getUserTests(session.userId, 5);
+    const userProgress = await db.getProgressReport(session.userId);
 
-    // Generate analysis with Analyst Agent
-    const analysis = await analystAgentAnalyze(testData);
+    // Analyze results
+    const analysis = await analystAgent.analystAgentAnalyze(testData, userProgress);
 
-    user.analysis = analysis;
+    // Save test to database
+    await db.saveTest(session.userId, {
+      test_type: 'diagnostic',
+      questions: session.questions,
+      answers: session.answers,
+      score: score,
+      total_questions: total,
+      percentage: percentage,
+      analysis: analysis
+    });
 
-    // Show results
+    // Update progress
+    await db.updateProgressBatch(session.userId, session.questions, session.answers, testData.map(t => t.is_correct));
+
+    // Clear session
+    delete activeSessions[telegramId];
+
+    // Format analysis message
+    const analysisMessage = analystAgent.formatAnalysisMessage(analysis);
     const resultMessage = `
-*✅ TEST COMPLETE*
+${analysisMessage}
 
-📊 *Your Score: ${score}/10 (${percentage}%)*
+*⏱️  Time Taken:* ${Math.floor(timeTaken / 60)}m ${timeTaken % 60}s
 
-${analysis}
+━━━━━━━━━━━━━━━━━━━
+${percentage >= 60 ? '🎉 Good Job!' : '💪 Keep Practicing!'}
 
-💎 *Unlock Full 7-Day Crash Plan* ₹99
+💎 *Unlock Full 7-Day Crash Plan* - ₹99
 
-Send /pay99 to get:
-• 100+ targeted questions based on YOUR weaknesses
-• Daily study schedule with mermaid diagrams
+Get:
+• 210 targeted questions based on YOUR weaknesses
+• Daily study schedule with 30 questions each day
+• Mermaid diagrams for key concepts
 • Formula sheets and PYQs
 • Session 2 percentile predictor
 
-*Don't guess. Target exactly what you need.*
+Send /pay99 to upgrade now!
     `;
 
     bot.sendMessage(chatId, resultMessage, { parse_mode: 'MarkdownV2' });
+
   } catch (e) {
-    console.error('Error analyzing test:', e);
-    bot.sendMessage(chatId, '❌ Error analyzing your test. Please try again.');
+    console.error('❌ Error completing test:', e);
+    bot.sendMessage(chatId, '❌ Error analyzing test. Please try again.');
   }
 }
 
-// /pay99 command - Payment flow
+// /pay99 command - Show payment info (will be implemented later)
 bot.onText(/\/pay99/, async (msg) => {
   const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
 
-  if (!users[chatId] || !users[chatId].analysis) {
-    bot.sendMessage(chatId, '❌ Please complete the diagnostic test first with /test');
-    return;
-  }
+  try {
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
 
-  // For now, simulate payment
-  const paymentMessage = `
-💳 *Payment Gateway*
+    if (user.is_paid) {
+      bot.sendMessage(chatId, '✅ You already have premium access! Send /myplan to view your study plan.', { parse_mode: 'MarkdownV2' });
+      return;
+    }
 
-*7-Day JEE Session 2 Crash Plan*
-Amount: ₹99
+    const paymentMessage = `
+💳 *Upgrade to Premium - ₹99*
 
-🔗 *Payment Link Coming Soon...*
+*What you get:*
+📅 Personalized 7-day crash plan
+🎯 210 questions based on YOUR weaknesses
+📊 Daily schedule (30 questions/day)
+📐 Mermaid diagrams for concepts
+📋 Formula sheets
+📈 Session 2 percentile predictor
+
+*Payment Gateway Coming Soon...*
 
 ⚠️ *For Testing:*
-Reply /paid to simulate successful payment
-  `;
+Reply /paid to simulate payment
+    `;
 
-  bot.sendMessage(chatId, paymentMessage, { parse_mode: 'MarkdownV2' });
+    bot.sendMessage(chatId, paymentMessage, { parse_mode: 'MarkdownV2' });
+  } catch (e) {
+    console.error('❌ Error in /pay99:', e);
+  }
 });
 
-// /paid command - Simulated payment for testing
+// /paid command - Simulate payment (for testing)
 bot.onText(/\/paid/, async (msg) => {
   const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
 
-  if (!users[chatId] || !users[chatId].analysis) {
-    bot.sendMessage(chatId, '❌ Please complete the diagnostic test first with /test');
-    return;
+  console.log(`💳 /paid from user ${telegramId}`);
+
+  try {
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
+
+    // Mark as paid
+    await db.updateUserPayment(user.id);
+
+    console.log(`✅ User ${user.id} marked as paid`);
+
+    bot.sendMessage(chatId, '✅ *Payment Successful!* Premium unlocked.', { parse_mode: 'MarkdownV2' });
+
+    // Generate and send plan
+    setTimeout(async () => {
+      await generateAndSendPlan(chatId, user.id);
+    }, 2000);
+
+  } catch (e) {
+    console.error('❌ Error processing payment:', e);
+    bot.sendMessage(chatId, '❌ Error processing payment.');
+  }
+});
+
+// /myplan command - View study plan
+bot.onText(/\/myplan/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
+
+  console.log(`📅 /myplan from user ${telegramId}`);
+
+  try {
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
+
+    if (!user.is_paid) {
+      bot.sendMessage(chatId, '❌ Premium feature. Send /pay99 to upgrade.', { parse_mode: 'MarkdownV2' });
+      return;
+    }
+
+    await generateAndSendPlan(chatId, user.id);
+
+  } catch (e) {
+    console.error('❌ Error showing plan:', e);
+    bot.sendMessage(chatId, '❌ Error loading plan. Please try again.');
+  }
+});
+
+// Generate and send study plan
+async function generateAndSendPlan(chatId, userId) {
+  try {
+    const botMessage = await bot.sendMessage(
+      chatId,
+      '📅 *Planner Agent* is creating your personalized 7-day crash plan...\n\nPlease wait 20-30 seconds...',
+      { parse_mode: 'MarkdownV2' }
+    );
+
+    // Get user data
+    const userStats = await db.getUserStats(userId);
+    const userTests = await db.getUserTests(userId, 3);
+    const weakestChapters = await db.getWeakestChapters(userId, 5);
+
+    // Build analysis from latest test
+    const analysis = userTests.length > 0
+      ? JSON.parse(userTests[0].analysis)
+      : {
+          subject_scores: {},
+          weakest_chapters: weakestChapters.map(c => ({
+            subject: c.subject,
+            chapter: c.chapter,
+            accuracy: c.accuracy,
+            issues: 'Needs practice'
+          })),
+          error_patterns: { conceptual: 0, calculation: 0, silly_mistake: 0, dominant: 'practice' },
+          session2_impact: { estimated_score: 150, potential_score: 200, loss: 50, recommendation: 'Practice daily' },
+          recommendations: ['Focus on weak areas']
+        };
+
+    // Generate plan
+    const plan = await plannerAgent.plannerAgentGeneratePlan(analysis, userStats);
+
+    console.log(`✅ Plan generated for user ${userId}`);
+
+    // Format plan message
+    const planMessage = plannerAgent.formatPlanMessage(plan);
+
+    // Split long message if needed (Telegram limit 4096 chars)
+    const messages = splitLongMessage(planMessage);
+
+    messages.forEach((msg, i) => {
+      if (i === 0) {
+        bot.editMessageText(botMessage.message_id, msg, { parse_mode: 'MarkdownV2' });
+      } else {
+        bot.sendMessage(chatId, msg, { parse_mode: 'MarkdownV2' });
+      }
+    });
+
+  } catch (e) {
+    console.error('❌ Error generating plan:', e);
+    bot.sendMessage(chatId, '❌ Error generating plan. Please try again.');
+  }
+}
+
+// Split long message into chunks
+function splitLongMessage(message) {
+  const chunks = [];
+  let currentChunk = '';
+
+  for (const line of message.split('\n')) {
+    if ((currentChunk + line).length > 4000) {
+      chunks.push(currentChunk);
+      currentChunk = line;
+    } else {
+      currentChunk += line + '\n';
+    }
   }
 
-  bot.sendMessage(chatId, '📅 *Planner Agent* is creating your personalized 7-day crash plan...\n\nThis may take 15-20 seconds...', { parse_mode: 'MarkdownV2' });
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk);
+  }
 
-  // Generate plan with Planner Agent
-  setTimeout(async () => {
-    try {
-      const plan = await plannerAgentCreatePlan(users[chatId].analysis);
+  return chunks;
+}
 
-      const finalMessage = `
-*✅ UNLOCKED: Your 7-Day Crash Plan*
+// /history command - Test history
+bot.onText(/\/history/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
 
-${plan}
+  console.log(`📊 /history from user ${telegramId}`);
 
-💡 *Tips:*
-• Follow the daily schedule religiously
-• Solve all 210 questions in the plan
-• Revise formula sheets daily
-• Take the final mock on Day 7
+  try {
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
 
-📣 *Share with Friends:*
-Share this bot: https://t.me/${process.env.BOT_USERNAME || 'your_bot'}?start=ref_${chatId}
+    const tests = await db.getUserTests(user.id, 10);
 
-Good luck for JEE Session 2! 🚀
-      `;
-
-      bot.sendMessage(chatId, finalMessage, { parse_mode: 'MarkdownV2' });
-    } catch (e) {
-      console.error('Error generating plan:', e);
-      bot.sendMessage(chatId, '❌ Error generating your plan. Please try again.');
+    if (tests.length === 0) {
+      bot.sendMessage(chatId, '📊 No tests taken yet. Send /test to start!', { parse_mode: 'MarkdownV2' });
+      return;
     }
-  }, 1500);
+
+    let message = `*📊 Your Test History*\n\n`;
+    tests.forEach((test, i) => {
+      const date = new Date(test.created_at).toLocaleDateString('en-IN');
+      message += `*Test ${tests.length - i}:* ${date}\n`;
+      message += `   Score: ${test.score}/${test.total_questions} (${test.percentage}%)\n`;
+      message += `   Type: ${test.test_type}\n\n`;
+    });
+
+    bot.sendMessage(chatId, message, { parse_mode: 'MarkdownV2' });
+
+  } catch (e) {
+    console.error('❌ Error fetching history:', e);
+    bot.sendMessage(chatId, '❌ Error fetching history.');
+  }
+});
+
+// /progress command - Subject-wise progress
+bot.onText(/\/progress/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
+
+  console.log(`📈 /progress from user ${telegramId}`);
+
+  try {
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
+
+    const progress = await db.getProgressReport(user.id);
+
+    if (progress.length === 0) {
+      bot.sendMessage(chatId, '📈 No progress data yet. Take a test first!', { parse_mode: 'MarkdownV2' });
+      return;
+    }
+
+    let message = `*📈 Subject-wise Progress*\n\n`;
+
+    // Group by subject
+    const subjectProgress = {};
+    progress.forEach(p => {
+      if (!subjectProgress[p.subject]) {
+        subjectProgress[p.subject] = { total: 0, correct: 0, chapters: [] };
+      }
+      subjectProgress[p.subject].total += p.total_attempted;
+      subjectProgress[p.subject].correct += p.total_correct;
+      subjectProgress[p.subject].chapters.push(p);
+    });
+
+    Object.entries(subjectProgress).forEach(([subject, data]) => {
+      const accuracy = Math.round((data.correct / data.total) * 100);
+      const emoji = accuracy >= 70 ? '✅' : accuracy >= 50 ? '📊' : '⚠️ ';
+      message += `${emoji} *${subject}:* ${accuracy}%\n`;
+      message += `   ${data.total} questions attempted\n`;
+      message += `   Weakest: ${data.chapters.slice(0, 2).map(c => c.chapter).join(', ')}\n\n`;
+    });
+
+    bot.sendMessage(chatId, message, { parse_mode: 'MarkdownV2' });
+
+  } catch (e) {
+    console.error('❌ Error fetching progress:', e);
+    bot.sendMessage(chatId, '❌ Error fetching progress.');
+  }
+});
+
+// /stats command - User statistics
+bot.onText(/\/stats/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
+
+  console.log(`📊 /stats from user ${telegramId}`);
+
+  try {
+    const user = await db.getOrCreateUser(telegramId, {
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
+    });
+
+    const bestScore = await db.getBestScore(user.id);
+
+    const message = `
+*📊 Your Statistics*
+
+👤 *User:* ${user.first_name || 'Student'} (@${user.username || 'N/A'})
+
+📈 *Performance:*
+• Tests Taken: ${user.total_tests}
+• Best Score: ${user.highest_score || 0}%
+• All-time Best: ${bestScore}%
+
+💎 *Status:* ${user.is_paid ? '✅ Premium User' : '🆓 Free Tier'}
+
+${!user.is_paid ? '\n💎 Upgrade to Premium for personalized plans!' : ''}
+
+*Joined:* ${new Date(user.created_at).toLocaleDateString('en-IN')}
+*Last Active:* ${new Date(user.last_active).toLocaleDateString('en-IN')}
+    `;
+
+    bot.sendMessage(chatId, message, { parse_mode: 'MarkdownV2' });
+
+  } catch (e) {
+    console.error('❌ Error fetching stats:', e);
+    bot.sendMessage(chatId, '❌ Error fetching stats.');
+  }
 });
 
 // /help command
 bot.onText(/\/help/, async (msg) => {
+  const chatId = msg.chat.id;
+
   const helpMessage = `
 🔥 *JEE Session 2 AI Tutor - Help*
 
 *Commands:*
 /start - Start the bot and get info
 /test - Take FREE diagnostic test (10 questions)
-/pay99 - Unlock 7-day crash plan (₹99)
+/history - View your test history
+/progress - Check subject-wise progress
+/stats - Your statistics
+/myplan - View your 7-day study plan (Premium)
+/pay99 - Upgrade to Premium for ₹99
 /help - Show this help message
 
 *How it works:*
 1. Take the diagnostic test (10 Qs, 10 mins)
 2. AI analyzes your exact weaknesses
-3. Get personalized 7-day crash plan
+3. Upgrade to get personalized 7-day crash plan
 4. Ace JEE Session 2!
 
-*Questions?* Contact: @${process.env.SUPPORT_USERNAME}
-  `;
+*Questions?* Contact support
+    `;
 
-  bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: 'MarkdownV2' });
+  bot.sendMessage(chatId, helpMessage, { parse_mode: 'MarkdownV2' });
+});
+
+// /cancel command - Cancel active test
+bot.onText(/\/cancel/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
+
+  if (activeSessions[telegramId]) {
+    delete activeSessions[telegramId];
+    bot.sendMessage(chatId, '❌ Test cancelled. Send /test to start a new one.', { parse_mode: 'MarkdownV2' });
+    console.log(`❌ Test cancelled by user ${telegramId}`);
+  } else {
+    bot.sendMessage(chatId, 'No active test to cancel.', { parse_mode: 'MarkdownV2' });
+  }
 });
 
 // Error handling
 bot.on('polling_error', (error) => {
   console.error('🔴 Polling error:', error.message);
+
+  // Don't log 409 conflicts (multiple instances)
+  if (!error.message.includes('409')) {
+    console.error('🔴 Error details:', error);
+  }
 });
 
-// Success message
-console.log('🚀 JEE Crash Bot is LIVE!');
-console.log(`📊 Bot: @${process.env.BOT_USERNAME || 'your_bot'}`);
+console.log('✅ JEE Crash Bot is READY!');
+console.log(`📊 Bot: @${process.env.BOT_USERNAME || 'jee-crash-bot'}`);
 console.log('✅ Waiting for users...');
