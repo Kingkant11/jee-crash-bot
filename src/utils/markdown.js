@@ -14,7 +14,7 @@ function escapeMarkdownV2(text) {
   return text
     .replace(/\\/g, '\\\\')  // Backslash first
     .replace(/_/g, '\\_')    // Underscore
-    .replace(/\*/g, '\\*')    // Asterisk
+    .replace(/\*/g, '\\*')    // Asterisk (escaped as \\*)
     .replace(/\[/g, '\\[')     // Opening bracket
     .replace(/\]/g, '\\]')     // Closing bracket
     .replace(/\(/g, '\\(')      // Opening parenthesis
@@ -51,7 +51,7 @@ function italic(text) {
  * Code block in MarkdownV2
  */
 function codeBlock(text, language = '') {
-  return `\`\`\`${language}\n${text}\n\`\`\``;
+  return '\\`\\`\\`' + language + '\\n' + text + '\\n\\`\\`\\`';
 }
 
 /**
@@ -65,7 +65,7 @@ function inlineCode(text) {
  * Monospace text in MarkdownV2
  */
 function monospace(text) {
-  return `\`\`\`${escapeMarkdownV2(text)}\`\`\``;
+  return '\\`\\`\\`' + escapeMarkdownV2(text) + '\\`\\`\\`';
 }
 
 /**
