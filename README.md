@@ -2,6 +2,13 @@
 
 🔥 **Transform JEE Main preparation with AI-powered diagnostics and personalized study plans**
 
+## 📚 Documentation
+
+- **[REQUIREMENTS.md](REQUIREMENTS.md)** - Comprehensive functional and non-functional requirements
+- **[USER_FLOWS.md](USER_FLOWS.md)** - Detailed user journey and flow documentation
+- **[IMPROVEMENTS.md](IMPROVEMENTS.md)** - Improvement opportunities and optimization strategies
+- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - Complete reverse engineering analysis and project overview
+
 ## Features
 
 - ✅ **AI-Generated Diagnostic Tests** - 10 questions based on Session 1 trends
